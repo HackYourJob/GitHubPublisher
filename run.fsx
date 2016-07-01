@@ -20,29 +20,40 @@ open Suave.RequestErrors
 let repositoryUrl = Environment.GetEnvironmentVariable "HACKYOURTRAINING_REPOSITORY_URL"
 let expectedSecret = Environment.GetEnvironmentVariable "HACKYOURTRAINING_DEPLOY_SECRET"
 
-let repositoryDir = __SOURCE_DIRECTORY__ </> "repository"
-let dockerDir = __SOURCE_DIRECTORY__ </> "www.hackyourtraining.com"
-Git.Repository.clone __SOURCE_DIRECTORY__ repositoryUrl "repository"
+let repositoryDirectoryName = "repository"
+let repositoryFullPath = __SOURCE_DIRECTORY__ </> repositoryDirectoryName
+let dockerFullPath = __SOURCE_DIRECTORY__ </> "www.hackyourtraining.com"
 
-let deploy secret =
+let initializeRepository () =
+    if TestDir repositoryFullPath |> not
+    then Git.Repository.clone __SOURCE_DIRECTORY__ repositoryUrl repositoryDirectoryName
+
+let exec commandName arguments workingDirectory timeout =
+    let result = ExecProcess (fun info ->
+        info.FileName <- commandName 
+        info.WorkingDirectory <- workingDirectory
+        info.Arguments <- arguments) timeout
+    if result <> 0 
+    then failwith (sprintf "Publish script failed with result %i" result)
+
+let updateRepository () =
+    Git.Reset.hard repositoryFullPath "HEAD" null
+    Git.Branches.pull repositoryFullPath "origin" "master"
+
+let publishDocker () =
+    exec "sh" "publish.sh" repositoryFullPath (TimeSpan.FromMinutes 15.0)
+
+let restartDocker () =
+    exec "sh" "/usr/bin/docker-restart" dockerFullPath (TimeSpan.FromMinutes 5.0)
+
+let checkSecret action secret =
     match secret with
     | Choice1Of2 s when s = expectedSecret ->
-        Git.Reset.hard repositoryDir "HEAD" null
-        Git.Branches.pull repositoryDir "origin" "master"
-        let result = ExecProcess (fun info ->
-            info.FileName <- "sh" 
-            info.WorkingDirectory <- repositoryDir
-            info.Arguments <- "publish.sh") (TimeSpan.FromMinutes 15.0)
-        if result <> 0 
-        then BAD_REQUEST (sprintf "Publish script failed with result %i" result)
-        else
-            let result = ExecProcess (fun info ->
-                info.FileName <- "docker-restart" 
-                info.WorkingDirectory <- "repositoryDir") (TimeSpan.FromMinutes 5.0)
-            if result <> 0 
-            then BAD_REQUEST (sprintf "Docker restart failed with result %i" result)
-            else OK "Deployed"
+        action ()
+        OK "Deployed"
     | _ -> BAD_REQUEST "Bad secret"
+
+let deploy = checkSecret (updateRepository >> publishDocker >> restartDocker)
 
 let app : WebPart =
     choose 
@@ -52,33 +63,11 @@ let app : WebPart =
             RequestErrors.NOT_FOUND "Page not found." 
         ]
 
-let runAndForget () = 
+let run () = 
     startWebServer { defaultConfig with 
                         bindings = [ HttpBinding.mk HTTP IPAddress.Any 80us ] } app
     
-let stop () = killProcess "HackYourTraining"
 
-let reload = stop >> ignore >> runAndForget
-
-let waitUserStopRequest () = 
-    () |> traceLine |> traceLine
-    traceImportant "Press any key to stop."
-    () |> traceLine |> traceLine
-
-    System.Console.ReadLine() |> ignore
-    
-let watchSource action =
-    !! (__SOURCE_DIRECTORY__ </> "*.fs") 
-        |> WatchChanges (fun _ -> action ())
-        |> ignore
-
-let reloadOnChange () =
-    watchSource reload
-
-let askStop = waitUserStopRequest >> stop
-
-Target "run" (runAndForget >> askStop)
-
-Target "watch" (runAndForget >> reloadOnChange >> askStop)
+Target "run" (initializeRepository >> run)
 
 RunTargetOrDefault "run"
