@@ -1,5 +1,5 @@
 .fake/
-.paket/
+.paket/paket.exe
 packages/
 .vs/
 bin/
