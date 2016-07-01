@@ -68,4 +68,6 @@ let run () =
                         bindings = [ HttpBinding.mk HTTP IPAddress.Any 80us ] } app
     
 
-initializeRepository >> run
+Target "run" (initializeRepository >> run)
+
+RunTargetOrDefault "run"
