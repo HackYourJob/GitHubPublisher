@@ -44,7 +44,7 @@ let publishDocker () =
     exec "sh" "publish.sh" repositoryFullPath (TimeSpan.FromMinutes 15.0)
 
 let restartDocker () =
-    exec "docker-restart" "" repositoryDirectoryName (TimeSpan.FromMinutes 5.0)
+    exec "sh" "/usr/bin/docker-restart" dockerFullPath (TimeSpan.FromMinutes 5.0)
 
 let checkSecret action secret =
     match secret with
