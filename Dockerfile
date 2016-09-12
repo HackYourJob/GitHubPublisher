@@ -15,6 +15,11 @@ RUN apt-get update && \
 RUN curl -sL https://deb.nodesource.com/setup_6.x | bash && \
 	apt-get install -y nodejs
 	
+RUN sh -c 'echo "deb [arch=amd64] https://apt-mo.trafficmanager.net/repos/dotnet-release/ xenial main" > /etc/apt/sources.list.d/dotnetdev.list' && \
+	apt-key adv --keyserver apt-mo.trafficmanager.net --recv-keys 417A0893 && \
+	apt-get update
+	apt-get install dotnet-dev-1.0.0-preview2-003121
+	
 WORKDIR /var/app
 
 COPY ./ /var/app
